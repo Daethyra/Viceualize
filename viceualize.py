@@ -147,7 +147,7 @@ def plot_data(head_dict):
             rangeslider=dict(visible=True),
             type="date",
         ),
-        yaxis=dict(title="Sum of Columns B-E"),
+        yaxis=dict(title="Total Hits Per Day"),
         hovermode="x unified",
         height=600,
         template="plotly_white",
