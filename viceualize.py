@@ -6,7 +6,7 @@ Module: viceualize.py
 Description: Process .ods and .xlsx files and create an interactive Plotly figure with zoom/scroll functionality
 Author: Daethyra Carino
 Date: 2025-02-23
-Version: 0.1.0
+Version: 0.1.1
 License: MIT
 """
 
@@ -131,7 +131,7 @@ def plot_data(head_dict):
 
     # Configure layout with time slider and zoom tools
     fig.update_layout(
-        title="Cannabis-Use Statistics (Interactive)",
+        title="Cannabis-Use Statistics",
         xaxis=dict(
             title="Date",
             rangeselector=dict(
@@ -166,7 +166,7 @@ def plot_data(head_dict):
 
     fig.show()
     fig.write_html(
-        f"assets/Cannabis-Use Statistics-{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        f"assets/Cannabis-Use-Statistics-{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
     )  # Create backup
     fig.write_html("assets/index.html")  # Export main page
 
