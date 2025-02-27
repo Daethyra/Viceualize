@@ -1,6 +1,6 @@
 [project]
 name = "viceualize"
-version = "0.1.0"
+version = "0.2.0"
 description = "Visualizing my vices."
 authors = [
     {name = "Daethyra",email = "109057945+Daethyra@users.noreply.github.com"}
@@ -17,7 +17,7 @@ dependencies = [
 
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=2.0.0,<3.0.0", "Cython", "setuptools"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.dev.dependencies]

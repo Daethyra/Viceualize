@@ -6,7 +6,7 @@ Module: viceualize.py
 Description: Process .ods and .xlsx files and create an interactive Plotly figure with zoom/scroll functionality
 Author: Daethyra Carino
 Date: 2025-02-23
-Version: 0.1.1
+Version: 0.1.2
 License: MIT
 """
 
@@ -16,6 +16,8 @@ from datetime import datetime
 
 import pandas as pd
 import plotly.graph_objects as go
+
+from src.process_files import process_rows # type: ignore
 
 
 def process_files(directory="."):
@@ -45,63 +47,57 @@ def process_files(directory="."):
             print(f"Error reading {filename}: {str(e)}")
             continue
 
-        data_dict = {}
-        num_rows = 0
-        num_date_errors = 0
+        # Convert to numpy array for Cython processing
+        df_values = df.values
+        
+        # Process rows using Cython/pure Python implementation
+        results = process_rows(df_values, filename)
+        
+        # Unpack results
+        data_dict = results['data_dict']
+        num_date_errors = results['num_date_errors']
+        invalid_cells_log = results['invalid_cells']
+        duplicate_dates_log = results['duplicate_dates']
+        num_rows = results['total_rows']
 
-        for idx, row in df.iterrows():
-            num_rows += 1
-            excel_row = idx + 2  # Adjusting for 0-based index and skipped header row
-
-            # Process date from column A (index 0)
-            date_str = row[0]
-            try:
-                date = pd.to_datetime(date_str)
-            except Exception as e:
-                print(
-                    f"Invalid date '{date_str}' in row {excel_row} of {filename}. Skipping row. Error: {str(e)}"
-                )
-                num_date_errors += 1
-                continue
-
-            # Process sum of columns B-E (indices 1 to 4)
-            sum_val = 0
-            invalid_cells = 0
-            for cell in row.iloc[1:5]:
-                try:
-                    sum_val += int(cell)
-                except (ValueError, TypeError):
-                    sum_val += 0
-                    invalid_cells += 1
-
-            if invalid_cells > 0:
-                print(
-                    f"Warning: {invalid_cells} non-integer value(s) in columns B-E of row {excel_row} in {filename}. Treated as 0."
-                )
-
-            # Check for duplicate dates and warn
-            if date in data_dict:
-                print(
-                    f"Warning: Duplicate date {date} in row {excel_row} of {filename}. Overwriting previous entry."
-                )
-            data_dict[date] = sum_val
+        # Print accumulated warnings
+        for row, count in invalid_cells_log:
+            print(f"Warning: {count} non-integer value(s) in columns B-E of row {row} in {filename}. Treated as 0.")
+            
+        for row, date_str in duplicate_dates_log:
+            print(f"Warning: Duplicate date {date_str} in row {row} of {filename}. Overwriting previous entry.")
 
         valid_rows = num_rows - num_date_errors
-        print(
-            f"Processed {valid_rows} valid rows from {filename} with {num_date_errors} date errors."
-        )
+        print(f"Processed {valid_rows} valid rows from {filename} with {num_date_errors} date errors.")
+        
         head_dict[filename] = data_dict
 
     return head_dict
 
 
 def plot_data(head_dict):
-    """Create an interactive Plotly figure with zoom/scroll functionality"""
+    """Create an interactive Plotly figure with zoom/scroll functionality and color segments by month."""
     if not head_dict:
         print("No data available to plot.")
         return
 
     fig = go.Figure()
+
+    # Define a dictionary mapping month (1-12) to specific colors
+    month_to_color = {
+        1: 'cyan',
+        2: 'hotpink',
+        3: 'mediumspringgreen',
+        4: 'blue',
+        5: 'darkorchid',
+        6: 'darksalmon',
+        7: 'peru',
+        8: 'indianred',
+        9: 'coral',
+        10: 'orange',
+        11: 'goldenrod',
+        12: 'green'
+    }
 
     # Create sorted list of files based on their earliest date
     sorted_files = sorted(
@@ -119,15 +115,44 @@ def plot_data(head_dict):
         sorted_dates = sorted(data_dict.keys())
         sorted_sums = [data_dict[date] for date in sorted_dates]
 
-        fig.add_trace(
-            go.Scatter(
-                x=sorted_dates,
-                y=sorted_sums,
-                mode="lines+markers",
-                name=filename,
-                hovertemplate="Date: %{x|%Y-%m-%d}<br>Sum: %{y}<extra></extra>",
+        # Group data into segments where the month is continuous
+        current_month = None
+        segment_dates = []
+        segment_sums = []
+        for date, sum_val in zip(sorted_dates, sorted_sums):
+            month = date.month
+            if current_month is None:
+                current_month = month
+            if month != current_month:
+                # Plot the current segment
+                fig.add_trace(
+                    go.Scatter(
+                        x=segment_dates,
+                        y=segment_sums,
+                        mode="lines+markers",
+                        name=f"{filename} - {current_month:02d}",
+                        line=dict(color=month_to_color.get(current_month, 'black')),
+                        hovertemplate=f"Date: %{{x|%Y-%m-%d}}<br>Sum: %{{y}}<br>Month: {current_month:02d}<extra></extra>"
+                    )
+                )
+                # Reset segment for new month
+                segment_dates = []
+                segment_sums = []
+                current_month = month
+            segment_dates.append(date)
+            segment_sums.append(sum_val)
+        # Plot the final segment
+        if segment_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=segment_dates,
+                    y=segment_sums,
+                    mode="lines+markers",
+                    name=f"{filename} - {current_month:02d}",
+                    line=dict(color=month_to_color.get(current_month, 'black')),
+                    hovertemplate=f"Date: %{{x|%Y-%m-%d}}<br>Sum: %{{y}}<br>Month: {current_month:02d}<extra></extra>"
+                )
             )
-        )
 
     # Configure layout with time slider and zoom tools
     fig.update_layout(
