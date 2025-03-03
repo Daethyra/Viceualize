@@ -6,7 +6,7 @@ Module: viceualize.py
 Description: Process .ods and .xlsx files and create an interactive Plotly figure with zoom/scroll functionality
 Author: Daethyra Carino
 Date: 2025-02-23
-Version: 0.1.2
+Version: 0.1.1
 License: MIT
 """
 
