@@ -19,7 +19,7 @@ import plotly.graph_objects as go
 
 
 def process_files(directory="."):
-    """Process all .ods and .xlsx files in the specified directory and return a dictionary of data."""
+    """Process all .ods and .xlsx files in the specified directory using vectorized operations."""
     head_dict = {}
     file_list = []
     for ext in ["*.ods", "*.xlsx"]:
@@ -34,62 +34,44 @@ def process_files(directory="."):
         print(f"\nProcessing file: {filename}")
 
         # Determine the appropriate engine for reading the file
-        if file_path.endswith(".ods"):
-            engine = "odf"
-        else:
-            engine = "openpyxl"
-
+        engine = "odf" if file_path.endswith(".ods") else "openpyxl"
         try:
             df = pd.read_excel(file_path, engine=engine, skiprows=1, header=None)
         except Exception as e:
             print(f"Error reading {filename}: {str(e)}")
             continue
 
-        data_dict = {}
-        num_rows = 0
-        num_date_errors = 0
+        # Process dates in bulk
+        df[0] = pd.to_datetime(df[0], errors="coerce")
+        valid_dates = df[0].notna()
+        df_valid = df[valid_dates].copy()
+        
+        # Store original indices for error reporting
+        df_valid['original_index'] = df_valid.index + 2  # Adjust for header row
 
-        for idx, row in df.iterrows():
-            num_rows += 1
-            excel_row = idx + 2  # Adjusting for 0-based index and skipped header row
+        # Process numeric columns in bulk
+        cols = [1, 2, 3, 4]
+        df_numeric = df_valid[cols].apply(pd.to_numeric, errors="coerce")
+        df_valid['sum_val'] = df_numeric.sum(axis=1)
+        df_valid['invalid_count'] = df_numeric.isna().sum(axis=1)
 
-            # Process date from column A (index 0)
-            date_str = row[0]
-            try:
-                date = pd.to_datetime(date_str)
-            except Exception as e:
-                print(
-                    f"Invalid date '{date_str}' in row {excel_row} of {filename}. Skipping row. Error: {str(e)}"
-                )
-                num_date_errors += 1
-                continue
+        # Handle invalid cells
+        invalid_rows = df_valid[df_valid['invalid_count'] > 0]
+        for _, row in invalid_rows.iterrows():
+            print(f"Warning: {row['invalid_count']} non-integer value(s) in columns B-E of "
+                  f"row {row['original_index']} in {filename}. Treated as 0.")
 
-            # Process sum of columns B-E (indices 1 to 4)
-            sum_val = 0
-            invalid_cells = 0
-            for cell in row.iloc[1:5]:
-                try:
-                    sum_val += int(cell)
-                except (ValueError, TypeError):
-                    sum_val += 0
-                    invalid_cells += 1
+        # Handle duplicate dates
+        duplicates = df_valid[df_valid.duplicated(subset=[0], keep='first')]
+        for _, row in duplicates.iterrows():
+            print(f"Warning: Duplicate date {row[0]} in row {row['original_index']} of {filename}. "
+                  f"Overwriting previous entry.")
 
-            if invalid_cells > 0:
-                print(
-                    f"Warning: {invalid_cells} non-integer value(s) in columns B-E of row {excel_row} in {filename}. Treated as 0."
-                )
+        # Create final data structure
+        data_dict = df_valid.set_index(0)['sum_val'].to_dict()
+        num_date_errors = (~valid_dates).sum()
 
-            # Check for duplicate dates and warn
-            if date in data_dict:
-                print(
-                    f"Warning: Duplicate date {date} in row {excel_row} of {filename}. Overwriting previous entry."
-                )
-            data_dict[date] = sum_val
-
-        valid_rows = num_rows - num_date_errors
-        print(
-            f"Processed {valid_rows} valid rows from {filename} with {num_date_errors} date errors."
-        )
+        print(f"Processed {len(df_valid)} valid rows from {filename} with {num_date_errors} date errors.")
         head_dict[filename] = data_dict
 
     return head_dict
